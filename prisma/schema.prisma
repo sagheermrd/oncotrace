@@ -1,0 +1,74 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum ResearchCaseStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Organization {
+  id          String         @id @default(uuid()) @db.Uuid
+  name        String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  memberships Membership[]
+  cases       ResearchCase[]
+}
+
+model User {
+  id           String         @id @default(uuid()) @db.Uuid
+  email        String         @unique
+  displayName  String
+  createdAt    DateTime       @default(now())
+  memberships  Membership[]
+  createdCases ResearchCase[] @relation("CaseCreator")
+}
+
+model Membership {
+  id             String         @id @default(uuid()) @db.Uuid
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId         String         @db.Uuid
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organizationId String         @db.Uuid
+  role           MembershipRole @default(ANALYST)
+  createdAt      DateTime       @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model ResearchCase {
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String             @db.VarChar(255)
+  description       String?            @db.VarChar(2000)
+  externalReference String?            @db.VarChar(255)
+  status            ResearchCaseStatus @default(ACTIVE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organizationId    String             @db.Uuid
+  creator           User               @relation("CaseCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByUserId   String             @db.Uuid
+
+  @@unique([organizationId, externalReference])
+  @@index([organizationId, createdAt, id])
+}

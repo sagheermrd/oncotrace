@@ -24,6 +24,31 @@ enum ResearchCaseStatus {
   ARCHIVED
 }
 
+enum SampleStatus {
+  REGISTERED
+  READY
+  ARCHIVED
+}
+
+enum InputFileType {
+  FASTQ
+  BAM
+  CRAM
+  VCF
+  GVCF
+  BED
+  OTHER
+}
+
+enum InputFileStatus {
+  REGISTERED
+  UPLOADING
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  FAILED
+}
+
 model Organization {
   id          String         @id @default(uuid()) @db.Uuid
   name        String
@@ -66,7 +91,46 @@ model ResearchCase {
   organizationId    String             @db.Uuid
   creator           User               @relation("CaseCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   createdByUserId   String             @db.Uuid
+  samples           Sample[]
 
   @@unique([organizationId, externalReference])
+  @@unique([organizationId, id])
   @@index([organizationId, createdAt, id])
+}
+
+model Sample {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  caseId         String       @db.Uuid
+  externalId     String       @db.VarChar(255)
+  sampleType     String       @db.VarChar(100)
+  status         SampleStatus @default(REGISTERED)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  researchCase ResearchCase @relation(fields: [organizationId, caseId], references: [organizationId, id], onDelete: Restrict)
+
+  inputFiles InputFile[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, caseId, externalId])
+  @@index([organizationId, caseId, createdAt, id])
+}
+
+model InputFile {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  sampleId       String          @db.Uuid
+  fileName       String          @db.VarChar(255)
+  fileType       InputFileType
+  storageKey     String          @unique
+  sizeBytes      BigInt?
+  checksumSha256 String?         @db.VarChar(64)
+  status         InputFileStatus @default(REGISTERED)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  sample Sample @relation(fields: [organizationId, sampleId], references: [organizationId, id], onDelete: Restrict)
+
+  @@index([organizationId, sampleId, createdAt, id])
 }

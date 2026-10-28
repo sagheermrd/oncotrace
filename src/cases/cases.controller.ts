@@ -5,12 +5,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { CasesService } from './cases.service.js';
 import * as devAuthGuard from '../auth/dev-auth.guard.js';
 import { CreateCaseDto } from './dto/create-case.dto.js';
+import { ListCaseQueryDto } from './dto/list-cases-query.dto.js';
 
 @Controller('cases')
 @UseGuards(devAuthGuard.DevAuthGuard)
@@ -27,8 +29,11 @@ export class CasesController {
   }
 
   @Get()
-  async findAllCases(@Req() req: devAuthGuard.AuthenticatedRequest) {
-    return await this.casesService.findAllCases(req.user);
+  async findAllCases(
+    @Req() req: devAuthGuard.AuthenticatedRequest,
+    @Query() query: ListCaseQueryDto,
+  ) {
+    return await this.casesService.findAllCases(req.user, query);
   }
 
   @Get(':caseId')

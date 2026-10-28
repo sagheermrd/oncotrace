@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -8,6 +9,44 @@ import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCaseDto } from './dto/create-case.dto.js';
 import { AuthenticatedUser } from '../auth/dev-auth.guard.js';
+import { ListCaseQueryDto } from './dto/list-cases-query.dto.ts';
+
+type CaseCursor = {
+  createdAt: string;
+  id: string;
+};
+
+function encodeCursor(cursor: CaseCursor): string {
+  return Buffer.from(JSON.stringify(cursor)).toString('base64url');
+}
+
+function decodeCursor(cursor: string): CaseCursor {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'));
+  } catch (error) {
+    throw new BadRequestException('Invalid pagination cursor');
+  }
+  if (
+    typeof decoded !== 'object' ||
+    decoded === null ||
+    !('createdAt' in decoded) ||
+    !('id' in decoded) ||
+    typeof decoded.createdAt !== 'string' ||
+    typeof decoded.id !== 'string' ||
+    !Number.isFinite(Date.parse(decoded.createdAt)) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      decoded.id,
+    )
+  ) {
+    throw new BadRequestException('Invalid pagination cursor');
+  }
+
+  return {
+    createdAt: new Date(decoded.createdAt).toISOString(),
+    id: decoded.id,
+  };
+}
 
 @Injectable()
 export class CasesService {
@@ -62,28 +101,51 @@ export class CasesService {
     }
   }
 
-  async findAllCases(user: AuthenticatedUser) {
+  async findAllCases(user: AuthenticatedUser, query: ListCaseQueryDto) {
     await this.assertMembership(user);
-    const cases = await this.prisma.researchCase.findMany({
-      where: {
-        organizationId: user.organizationId,
-      },
+    const limit = query.limit ?? 20;
+
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+    const where = {
+      organizationId: user.organizationId,
+      ...(cursor && {
+        OR: [
+          { createdAt: { lt: new Date(cursor.createdAt) } },
+          { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+        ],
+      }),
+    };
+    const rows = await this.prisma.researchCase.findMany({
+      where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 20,
+      take: limit + 1,
       select: {
         id: true,
         name: true,
         description: true,
         externalReference: true,
-        organizationId: true,
-        createdByUserId: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
+
+    const hasNextPage = rows.length > limit;
+    const items = rows.slice(0, limit);
+    const lastItem = items.at(-1);
+
     return {
-      cases,
+      items,
       pageInfo: {
-        nextCursor: null,
-        hasNextPage: false,
+        limit,
+        hasNextPage,
+        nextCursor:
+          hasNextPage && lastItem
+            ? encodeCursor({
+                createdAt: lastItem.createdAt.toISOString(),
+                id: lastItem.id,
+              })
+            : null,
       },
     };
   }

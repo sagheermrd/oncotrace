@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { createObserveModule } from '@nestjs/observe';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { CasesModule } from './cases/cases.module.js';
-
-export const { ObserveModule, ObserveInstrument } = createObserveModule();
+import { SamplesModule } from './samples/samples.module.ts';
 
 @Module({
   imports: [
@@ -13,6 +11,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     PrismaModule,
     CasesModule,
+    SamplesModule,
   ],
 })
 export class AppModule {}

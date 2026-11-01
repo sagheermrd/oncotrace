@@ -18,9 +18,9 @@
 - [x] Define InputFile model.
 - [x] Add organization-level composite relationships.
 - [x] Apply database migration.
-- [ ] Implement sample creation API.
-- [ ] Implement sample listing API.
-- [ ] Implement sample retrieval API.
+- [x] Implement sample creation API.
+- [x] Implement sample listing API.
+- [x] Implement sample retrieval API.
 - [ ] Add sample validation and authorization tests.
 - [ ] Implement input-file metadata API.
 - [ ] Add input-file metadata tests.

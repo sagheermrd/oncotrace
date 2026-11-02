@@ -55,9 +55,9 @@ export class SamplesService {
           organizationId,
           userId,
         },
-        select: {
-          id: true,
-        },
+      },
+      select: {
+        id: true,
       },
     });
 
@@ -75,7 +75,6 @@ export class SamplesService {
         organizationId: true,
       },
     });
-
     if (!caseRecord) {
       throw new NotFoundException('Case not found');
     }
@@ -142,9 +141,9 @@ export class SamplesService {
               ],
             }
           : {}),
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1, // Fetch one extra to determine if there's a next page
       },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1, // Fetch one extra to determine if there's a next page
     });
 
     const hasNextPage = samples.length > limit;

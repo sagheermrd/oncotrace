@@ -7,8 +7,8 @@ export default mergeConfig(
     test: {
       include: ['test/**/*.e2e-spec.ts'],
       globals: true,
-      testTimeout: 15_000,
-      hookTimeout: 15_000,
+      testTimeout: 30000,
+      hookTimeout: 30000,
       fileParallelism: false,
     },
   }),

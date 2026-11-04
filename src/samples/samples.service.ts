@@ -152,7 +152,7 @@ export class SamplesService {
 
     return {
       items,
-      pages: {
+      pageInfo: {
         limit: limit,
         hasNextPage: hasNextPage,
         nextCursor:

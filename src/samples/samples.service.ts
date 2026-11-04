@@ -188,6 +188,23 @@ export class SamplesService {
       throw new NotFoundException('Sample not found');
     }
 
-    return sample;
+    return {
+      id: sample.id,
+      organizationId: sample.organizationId,
+      caseId: sample.caseId,
+      externalId: sample.externalId,
+      sampleType: sample.sampleType,
+      status: sample.status,
+      createdAt: sample.createdAt,
+      updatedAt: sample.updatedAt,
+      inputFiles: sample.inputFiles.map((file) => ({
+        id: file.id,
+        fileName: file.fileName,
+        fileType: file.fileType,
+        sizeBytes: file.sizeBytes?.toString() ?? null,
+        status: file.status,
+        createdAt: file.createdAt,
+      })),
+    };
   }
 }

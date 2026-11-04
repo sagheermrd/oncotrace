@@ -8,6 +8,7 @@ export class ListCaseQueryDto {
     example: 20,
     minimum: 1,
     maximum: 100,
+    type: 'integer',
   })
   @IsOptional()
   @Type(() => Number)

@@ -19,7 +19,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-
+import { SampleResponseDto } from './dto/sample-response.dto.js';
+import { PaginatedSamplesResponseDto } from './dto/paginated-samples-response.dto.js';
 import * as devAuthGuard from '../auth/dev-auth.guard.js';
 import { CreateSampleDto } from './dto/create-sample.dto.js';
 import { ListSamplesQueryDto } from './dto/list-samples-query.dto.js';
@@ -42,25 +43,7 @@ export class SamplesController {
   })
   @ApiOkResponse({
     description: 'Paginated list of samples.',
-    schema: {
-      example: {
-        items: [
-          {
-            id: '33333333-3333-4333-8333-333333333333',
-            externalId: 'SAMPLE-001',
-            sampleType: 'TUMOR',
-            status: 'REGISTERED',
-            createdAt: '2026-10-20T10:00:00.000Z',
-            updatedAt: '2026-10-20T10:00:00.000Z',
-          },
-        ],
-        pageInfo: {
-          limit: 20,
-          hasNextPage: false,
-          nextCursor: null,
-        },
-      },
-    },
+    type: PaginatedSamplesResponseDto,
   })
   @ApiBadRequestResponse({
     description: 'Invalid pagination limit or cursor.',
@@ -94,18 +77,7 @@ export class SamplesController {
   })
   @ApiCreatedResponse({
     description: 'Sample successfully registered.',
-    schema: {
-      example: {
-        id: '33333333-3333-4333-8333-333333333333',
-        organizationId: '22222222-2222-4222-8222-222222222222',
-        caseId: '44444444-4444-4444-8444-444444444444',
-        externalId: 'SAMPLE-001',
-        sampleType: 'TUMOR',
-        status: 'REGISTERED',
-        createdAt: '2026-10-20T10:00:00.000Z',
-        updatedAt: '2026-10-20T10:00:00.000Z',
-      },
-    },
+    type: SampleResponseDto,
   })
   @ApiBadRequestResponse({
     description: 'Invalid case UUID or request validation failed.',
@@ -144,6 +116,7 @@ export class SamplesController {
   })
   @ApiOkResponse({
     description: 'Sample successfully retrieved.',
+    type: SampleResponseDto,
   })
   @ApiBadRequestResponse({
     description: 'Invalid case or sample UUID.',

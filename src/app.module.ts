@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { CasesModule } from './cases/cases.module.js';
 import { SamplesModule } from './samples/samples.module.ts';
+import { InputFilesModule } from './input-files/input-files.module.js';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { SamplesModule } from './samples/samples.module.ts';
     PrismaModule,
     CasesModule,
     SamplesModule,
+    InputFilesModule,
   ],
 })
 export class AppModule {}

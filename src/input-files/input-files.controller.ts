@@ -18,9 +18,9 @@ import {
 import { CreateInputFileDto } from './dto/create-input-file.dto.js';
 import { InputFileResponseDto } from './dto/input-file-response.dto.js';
 import { InputFilesService } from './input-files.service.js';
-import { DevAuthGuard } from '../auth/dev-auth.guard.ts';
+import * as devAuthGuard from '../auth/dev-auth.guard.ts';
 
-@UseGuards(DevAuthGuard)
+@UseGuards(devAuthGuard.DevAuthGuard)
 @ApiTags('input-files')
 @Controller('cases/:caseId/samples/:sampleId/input-files')
 export class InputFilesController {
@@ -32,7 +32,7 @@ export class InputFilesController {
   })
   @ApiCreatedResponse({ type: InputFileResponseDto })
   async createInputFile(
-    @Req() req: any,
+    @Req() req: devAuthGuard.AuthenticatedRequest,
     @Param('caseId') caseId: string,
     @Param('sampleId') sampleId: string,
     @Body() createInputFileDto: CreateInputFileDto,
@@ -52,7 +52,7 @@ export class InputFilesController {
   })
   @ApiOkResponse({ type: [InputFileResponseDto] })
   async findAllInputFiles(
-    @Req() req: any,
+    @Req() req: devAuthGuard.AuthenticatedRequest,
     @Param('caseId') caseId: string,
     @Param('sampleId') sampleId: string,
   ): Promise<InputFileResponseDto[]> {
@@ -67,7 +67,7 @@ export class InputFilesController {
   @ApiOperation({ summary: 'Retrieve input file metadata' })
   @ApiOkResponse({ type: InputFileResponseDto })
   findOne(
-    @Req() req: any,
+    @Req() req: devAuthGuard.AuthenticatedRequest,
     @Param('caseId') caseId: string,
     @Param('sampleId') sampleId: string,
     @Param('inputFileId') inputFileId: string,

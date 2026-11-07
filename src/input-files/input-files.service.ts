@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,9 @@ import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateInputFileDto } from './dto/create-input-file.dto.js';
+import { Prisma } from '../generated/prisma/client.ts';
+
+type InputFileRecord = Prisma.InputFileGetPayload<{}>;
 
 @Injectable()
 export class InputFilesService {
@@ -45,7 +49,7 @@ export class InputFilesService {
     }
   }
 
-  private toResponseDto(inputFile: any) {
+  private toResponseDto(inputFile: InputFileRecord) {
     return {
       id: inputFile.id,
       fileName: inputFile.fileName,
@@ -65,13 +69,21 @@ export class InputFilesService {
     sampleId: string,
     dto: CreateInputFileDto,
   ) {
-    console.log(
-      `Creating input file for organizationId: ${organizationId}, userId: ${userId}`,
-    );
     await this.assertMembership(userId, organizationId);
     await this.assertSampleAccess(organizationId, caseId, sampleId);
 
     const storageKey = `organizations/${organizationId}/samples/${sampleId}/input-files/${randomUUID()}`;
+
+    if (dto.sizeBytes !== undefined) {
+      const size = BigInt(dto.sizeBytes);
+      const maxBigInt = 9223372036854775807n;
+
+      if (size > maxBigInt) {
+        throw new BadRequestException(
+          'sizeBytes exceeds the maximum supported file size',
+        );
+      }
+    }
 
     const inputFile = await this.prisma.inputFile.create({
       data: {

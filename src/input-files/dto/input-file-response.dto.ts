@@ -15,14 +15,15 @@ export class InputFileResponseDto {
   @ApiProperty({ enum: InputFileType })
   fileType!: InputFileType;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: String,
     nullable: true,
     example: '104857600',
+    description: 'File size in bytes, represented as a decimal string.',
   })
   sizeBytes!: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     nullable: true,
     example: 'a'.repeat(64),
   })

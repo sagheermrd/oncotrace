@@ -18,7 +18,7 @@ export class CreateInputFileDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^\d+$/, {
+  @Matches(/^(0|[1-9]\d{0,18})$/, {
     message: 'sizeBytes must be a non-negative integer string',
   })
   sizeBytes?: string;

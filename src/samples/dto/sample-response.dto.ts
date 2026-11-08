@@ -24,7 +24,7 @@ export class InputFileResponseDto {
     example: '104857600',
     nullable: true,
   })
-  sizeBytes!: string | null;
+  expectedSizeBytes!: string | null;
 
   @ApiProperty({
     enum: [

@@ -49,6 +49,14 @@ enum InputFileStatus {
   FAILED
 }
 
+enum UploadSessionStatus {
+  INITIATED
+  COMPLETED
+  ABORTED
+  EXPIRED
+  FAILED
+}
+
 model Organization {
   id          String         @id @default(uuid()) @db.Uuid
   name        String
@@ -118,19 +126,45 @@ model Sample {
 }
 
 model InputFile {
-  id             String          @id @default(uuid()) @db.Uuid
-  organizationId String          @db.Uuid
-  sampleId       String          @db.Uuid
-  fileName       String          @db.VarChar(255)
-  fileType       InputFileType
-  storageKey     String          @unique
-  sizeBytes      BigInt?
-  checksumSha256 String?         @db.VarChar(64)
-  status         InputFileStatus @default(REGISTERED)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                     String          @id @default(uuid()) @db.Uuid
+  organizationId         String          @db.Uuid
+  sampleId               String          @db.Uuid
+  fileName               String          @db.VarChar(255)
+  fileType               InputFileType
+  storageKey             String          @unique
+  expectedSizeBytes      BigInt? // The expected size of the file in bytes, as provided by the user or system.
+  expectedChecksumSha256 String?         @db.VarChar(64) // The expected SHA-256 checksum of the file, as provided by the user or system.
+  actualSizeBytes        BigInt? // The actual size of the file in bytes, as determined after upload.
+  actualChecksumSha256   String?         @db.VarChar(64) // The actual SHA-256 checksum of the file, as determined after upload by the server.
+  verifiedAt             DateTime?
+  failureReason          String?         @db.VarChar(1000)
+  status                 InputFileStatus @default(REGISTERED)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  uploadSessions         UploadSession[]
 
   sample Sample @relation(fields: [organizationId, sampleId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@index([organizationId, sampleId, createdAt, id])
+}
+
+model UploadSession {
+  id             String @id @default(uuid()) @db.Uuid
+  inputFileId    String @db.Uuid
+  organizationId String @db.Uuid
+
+  status UploadSessionStatus @default(INITIATED)
+
+  multipartUploadId String? // Populated when using S3 multipart upload.
+  expiresAt         DateTime
+  completedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inpuFile InputFile @relation(fields: [organizationId, inputFileId], references: [organizationId, id], onDelete: Restrict)
+
+  @@index([organizationId, inputFileId, createdAt])
+  @@index([status, expiresAt])
 }

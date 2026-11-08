@@ -49,16 +49,26 @@ export class InputFilesService {
     }
   }
 
-  private toResponseDto(inputFile: InputFileRecord) {
+  private toResponseDto(file: InputFileRecord) {
     return {
-      id: inputFile.id,
-      fileName: inputFile.fileName,
-      fileType: inputFile.fileType,
-      sizeBytes: inputFile.sizeBytes?.toString() ?? null,
-      checksumSha256: inputFile.checksumSha256,
-      status: inputFile.status,
-      createdAt: inputFile.createdAt,
-      updatedAt: inputFile.updatedAt,
+      id: file.id,
+      fileName: file.fileName,
+      fileType: file.fileType,
+
+      expectedSizeBytes: file.expectedSizeBytes?.toString() ?? null,
+
+      expectedChecksumSha256: file.expectedChecksumSha256,
+
+      actualSizeBytes: file.actualSizeBytes?.toString() ?? null,
+
+      actualChecksumSha256: file.actualChecksumSha256,
+
+      verifiedAt: file.verifiedAt,
+      failureReason: file.failureReason,
+
+      status: file.status,
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
     };
   }
 
@@ -74,13 +84,13 @@ export class InputFilesService {
 
     const storageKey = `organizations/${organizationId}/samples/${sampleId}/input-files/${randomUUID()}`;
 
-    if (dto.sizeBytes !== undefined) {
-      const size = BigInt(dto.sizeBytes);
+    if (dto.expectedSizeBytes !== undefined) {
+      const size = BigInt(dto.expectedSizeBytes);
       const maxBigInt = 9223372036854775807n;
 
       if (size > maxBigInt) {
         throw new BadRequestException(
-          'sizeBytes exceeds the maximum supported file size',
+          'expectedSizeBytes exceeds the maximum supported file size',
         );
       }
     }
@@ -92,11 +102,12 @@ export class InputFilesService {
         storageKey,
         fileName: dto.fileName,
         fileType: dto.fileType,
-        sizeBytes:
-          dto.sizeBytes !== undefined && dto.sizeBytes !== null
-            ? BigInt(dto.sizeBytes)
+        expectedSizeBytes:
+          dto.expectedSizeBytes !== undefined
+            ? BigInt(dto.expectedSizeBytes)
             : null,
-        checksumSha256: dto.checksumSha256?.toLowerCase() ?? null,
+        expectedChecksumSha256:
+          dto.expectedChecksumSha256?.toLowerCase() ?? null,
       },
     });
 

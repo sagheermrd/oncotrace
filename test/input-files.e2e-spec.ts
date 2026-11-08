@@ -32,8 +32,8 @@ const API_PREFIX = '/api/v1';
 type FilePayload = {
   fileName: string;
   fileType: string;
-  sizeBytes?: string;
-  checksumSha256?: string;
+  expectedSizeBytes?: string;
+  expectedChecksumSha256?: string;
 };
 
 const createFilePayload = (
@@ -41,8 +41,8 @@ const createFilePayload = (
 ): FilePayload => ({
   fileName: 'sample_R1.fastq.gz',
   fileType: 'FASTQ',
-  sizeBytes: '104857600',
-  checksumSha256: 'a'.repeat(64),
+  expectedSizeBytes: '104857600',
+  expectedChecksumSha256: 'a'.repeat(64),
   ...overrides,
 });
 
@@ -251,8 +251,8 @@ describe('InputFiles API (e2e)', () => {
       expect(response.body).toMatchObject({
         fileName: 'sample_R1.fastq.gz',
         fileType: 'FASTQ',
-        sizeBytes: '104857600',
-        checksumSha256: 'a'.repeat(64),
+        expectedSizeBytes: '104857600',
+        expectedChecksumSha256: 'a'.repeat(64),
         status: 'REGISTERED',
       });
 
@@ -264,7 +264,7 @@ describe('InputFiles API (e2e)', () => {
       expect(response.body).not.toHaveProperty('storageKey');
 
       // BigInt values must be serialized as strings.
-      expect(typeof response.body.sizeBytes).toBe('string');
+      expect(typeof response.body.expectedSizeBytes).toBe('string');
     });
 
     it('allows optional size and checksum to be omitted', async () => {
@@ -291,7 +291,7 @@ describe('InputFiles API (e2e)', () => {
     it('rejects an invalid checksum', async () => {
       const response = await registerFile(caseId, sampleId, {
         ...createFilePayload(),
-        checksumSha256: 'invalid-checksum',
+        expectedChecksumSha256: 'invalid-checksum',
       });
       expect(response.status).toBe(400);
     });
@@ -299,7 +299,7 @@ describe('InputFiles API (e2e)', () => {
     it('rejects a negative file size', async () => {
       const response = await registerFile(caseId, sampleId, {
         ...createFilePayload(),
-        sizeBytes: '-100',
+        expectedSizeBytes: '-100',
       });
       expect(response.status).toBe(400);
     });
@@ -307,7 +307,7 @@ describe('InputFiles API (e2e)', () => {
     it('rejects a non-numeric file size', async () => {
       const response = await registerFile(caseId, sampleId, {
         ...createFilePayload(),
-        sizeBytes: 'not-a-number',
+        expectedSizeBytes: 'not-a-number',
       });
       expect(response.status).toBe(400);
     });

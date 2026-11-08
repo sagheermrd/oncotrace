@@ -19,14 +19,14 @@ export class CreateInputFileDto {
   @IsOptional()
   @IsString()
   @Matches(/^(0|[1-9]\d{0,18})$/, {
-    message: 'sizeBytes must be a non-negative integer string',
+    message: 'expectedSizeBytes must be a non-negative integer string',
   })
-  sizeBytes?: string;
+  expectedSizeBytes?: string;
 
   @IsOptional()
   @IsString()
   @Matches(/^[a-fA-F0-9]{64}$/, {
-    message: 'checksumSha256 must be a valid SHA-256 checksum',
+    message: 'expectedChecksumSha256 must be a valid SHA-256 checksum',
   })
-  checksumSha256?: string;
+  expectedChecksumSha256?: string;
 }

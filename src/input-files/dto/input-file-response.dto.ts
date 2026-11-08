@@ -21,13 +21,13 @@ export class InputFileResponseDto {
     example: '104857600',
     description: 'File size in bytes, represented as a decimal string.',
   })
-  sizeBytes!: string | null;
+  expectedSizeBytes!: string | null;
 
   @ApiProperty({
     nullable: true,
     example: 'a'.repeat(64),
   })
-  checksumSha256!: string | null;
+  expectedChecksumSha256!: string | null;
 
   @ApiProperty({ enum: InputFileStatus })
   status!: InputFileStatus;

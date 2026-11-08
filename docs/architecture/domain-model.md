@@ -98,8 +98,8 @@ Important fields:
 - fileName
 - fileType
 - storageKey
-- sizeBytes
-- checksumSha256
+- expectedSizeBytes
+- expectedChecksumSha256
 - status
 - createdAt
 - updatedAt
@@ -160,8 +160,8 @@ erDiagram
         string fileName
         enum fileType
         string storageKey
-        bigint sizeBytes
-        string checksumSha256
+        bigint expectedSizeBytes
+        string expectedChecksumSha256
         enum status
     }
 ```

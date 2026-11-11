@@ -18,7 +18,7 @@ import {
 import { CreateInputFileDto } from './dto/create-input-file.dto.js';
 import { InputFileResponseDto } from './dto/input-file-response.dto.js';
 import { InputFilesService } from './input-files.service.js';
-import * as devAuthGuard from '../auth/dev-auth.guard.ts';
+import * as devAuthGuard from '../auth/dev-auth.guard.js';
 
 @UseGuards(devAuthGuard.DevAuthGuard)
 @ApiTags('input-files')

@@ -22,6 +22,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { DevAuthGuard } from '../src/auth/dev-auth.guard.ts';
+import { OBJECT_STORAGE } from '../src/storage/storage.constants.js';
 
 const TEST_USER_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_ORG_ID = '22222222-2222-4222-8222-222222222222';
@@ -45,6 +46,14 @@ const createFilePayload = (
   expectedChecksumSha256: 'a'.repeat(64),
   ...overrides,
 });
+
+const objectStorageMock = {
+  createPresignedUploadUrl: vi
+    .fn()
+    .mockResolvedValue('https://example.test/presigned-upload'),
+  getObjectMetadata: vi.fn(),
+  deleteObject: vi.fn(),
+};
 
 const testAuthGuard = {
   canActivate(context: ExecutionContext) {
@@ -128,6 +137,8 @@ describe('InputFiles API (e2e)', () => {
     })
       .overrideGuard(DevAuthGuard)
       .useValue(testAuthGuard)
+      .overrideProvider(OBJECT_STORAGE)
+      .useValue(objectStorageMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -178,6 +189,10 @@ describe('InputFiles API (e2e)', () => {
   });
 
   beforeEach(async () => {
+    vi.clearAllMocks();
+    objectStorageMock.createPresignedUploadUrl.mockResolvedValue(
+      'https://example.test/presigned-upload',
+    );
     const researchCase = await createCase(TEST_ORG_ID);
     caseId = researchCase.id;
 

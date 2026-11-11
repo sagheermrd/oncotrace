@@ -1,21 +1,40 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 
-import { randomUUID } from 'node:crypto';
+import { InputFileStatus, Prisma } from '../generated/prisma/client.js';
+import { OBJECT_STORAGE } from '../storage/storage.constants.js';
+import type { ObjectStorage } from '../storage/interfaces/object-storage.interface.js';
+import type { AuthenticatedUser } from '../auth/types/authenticated-request.js';
 
+import storageConfig from '../config/storage.config.js';
+import type { ConfigType } from '@nestjs/config';
+
+import {
+  defaultContentType,
+  isAllowedContentType,
+} from './input-file-content-types.js';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateInputFileDto } from './dto/create-input-file.dto.js';
-import { Prisma } from '../generated/prisma/client.ts';
 
 type InputFileRecord = Prisma.InputFileGetPayload<{}>;
 
 @Injectable()
 export class InputFilesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(OBJECT_STORAGE)
+    private readonly objectStorage: ObjectStorage,
+    @Inject(storageConfig.KEY)
+    private readonly storageConfiguration: ConfigType<typeof storageConfig>,
+  ) {}
 
   private async assertMembership(userId: string, organizationId: string) {
     const membership = await this.prisma.membership.findUnique({
@@ -70,6 +89,106 @@ export class InputFilesService {
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
     };
+  }
+
+  async createUploadUrl(
+    inputFileId: string,
+    user: AuthenticatedUser,
+    requestedContentType?: string,
+  ) {
+    await this.assertMembership(user.userId, user.organizationId);
+
+    const inputFile = await this.prisma.inputFile.findUnique({
+      where: { id: inputFileId, organizationId: user.organizationId },
+    });
+
+    if (!inputFile) {
+      throw new NotFoundException('Input file not found');
+    }
+
+    const contentType =
+      requestedContentType ?? defaultContentType(inputFile.fileType);
+
+    if (!isAllowedContentType(inputFile.fileType, contentType)) {
+      throw new BadRequestException(
+        `Content type ${contentType} is not allowed for ${inputFile.fileType}`,
+      );
+    }
+
+    const expiresInSeconds =
+      this.storageConfiguration.UploadUrlExpirationSeconds;
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+    // Atomically claim the file for uploading and create a session.
+    const uploadFileSession = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.inputFile.updateMany({
+        where: {
+          id: inputFileId,
+          organizationId: user.organizationId,
+          status: { in: [InputFileStatus.REGISTERED, InputFileStatus.FAILED] },
+        },
+        data: {
+          status: InputFileStatus.UPLOADING,
+          failureReason: null,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException(
+          'This input file is already uploading or cannot be uploaded in its current state',
+        );
+      }
+      return tx.uploadSession.create({
+        data: {
+          organizationId: user.organizationId,
+          inputFileId: inputFile.id,
+          expiresAt,
+        },
+      });
+    });
+
+    if (!uploadFileSession) {
+      throw new ConflictException(
+        'Input file is already being uploaded or has been uploaded.',
+      );
+    }
+    // Generate a URL for the backend-owned storage key.
+    try {
+      const uploadUrl = await this.objectStorage.createPresignedUploadUrl({
+        key: inputFile.storageKey,
+        expiresInSeconds,
+        contentType,
+      });
+
+      return {
+        uploadSessionId: uploadFileSession.id,
+        uploadUrl,
+        method: 'PUT' as const,
+        expiresAt,
+        requiredHeaders: {
+          'Content-Type': contentType,
+        },
+      };
+    } catch (error) {
+      // The session exists but signing failed. Mark it failed.
+      await this.prisma.$transaction([
+        this.prisma.uploadSession.update({
+          where: { id: uploadFileSession.id },
+          data: { status: 'FAILED' },
+        }),
+        this.prisma.inputFile.updateMany({
+          where: {
+            id: inputFile.id,
+            organizationId: user.organizationId,
+            status: InputFileStatus.UPLOADING,
+          },
+          data: {
+            status: InputFileStatus.FAILED,
+            failureReason: 'Unable to generate upload URL',
+          },
+        }),
+      ]);
+
+      throw new InternalServerErrorException('Failed to generate upload URL');
+    }
   }
 
   async createInputFile(

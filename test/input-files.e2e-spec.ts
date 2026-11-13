@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-
 import {
   afterAll,
   afterEach,
@@ -8,6 +7,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
 
 import {
@@ -108,15 +108,65 @@ describe('InputFiles API (e2e)', () => {
   async function createSample(
     targetCaseId: string,
     externalId = `SAMPLE-${randomUUID()}`,
+    organizationId = TEST_ORG_ID,
   ) {
     return prisma.sample.create({
       data: {
-        organizationId: TEST_ORG_ID,
+        organizationId,
         caseId: targetCaseId,
         externalId,
         sampleType: 'TUMOR',
       },
     });
+  }
+
+  async function createForeignInputFile(targetSampleId: string) {
+    return prisma.inputFile.create({
+      data: {
+        organizationId: OTHER_ORG_ID,
+        sampleId: targetSampleId,
+        fileName: 'foreign-sample.fastq.gz',
+        fileType: 'FASTQ',
+        storageKey: `organizations/${OTHER_ORG_ID}/test/${randomUUID()}`,
+      },
+    });
+  }
+
+  async function deleteFilesForSample(
+    organizationId: string,
+    targetSampleId: string,
+  ) {
+    const files = await prisma.inputFile.findMany({
+      where: {
+        organizationId,
+        sampleId: targetSampleId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const inputFileIds = files.map((file) => file.id);
+
+    if (inputFileIds.length > 0) {
+      await prisma.uploadSession.deleteMany({
+        where: {
+          organizationId,
+          inputFileId: {
+            in: inputFileIds,
+          },
+        },
+      });
+
+      await prisma.inputFile.deleteMany({
+        where: {
+          organizationId,
+          id: {
+            in: inputFileIds,
+          },
+        },
+      });
+    }
   }
 
   async function registerFile(
@@ -201,14 +251,9 @@ describe('InputFiles API (e2e)', () => {
   });
 
   afterEach(async () => {
-    // InputFiles must be deleted before their parent samples.
+    // UploadSession must be deleted before InputFile.
     if (foreignSampleId) {
-      await prisma.inputFile.deleteMany({
-        where: {
-          organizationId: OTHER_ORG_ID,
-          sampleId: foreignSampleId,
-        },
-      });
+      await deleteFilesForSample(OTHER_ORG_ID, foreignSampleId);
 
       await prisma.sample.deleteMany({
         where: {
@@ -229,12 +274,7 @@ describe('InputFiles API (e2e)', () => {
     }
 
     if (sampleId) {
-      await prisma.inputFile.deleteMany({
-        where: {
-          organizationId: TEST_ORG_ID,
-          sampleId,
-        },
-      });
+      await deleteFilesForSample(TEST_ORG_ID, sampleId);
 
       await prisma.sample.deleteMany({
         where: {
@@ -439,7 +479,307 @@ describe('InputFiles API (e2e)', () => {
     });
   });
 
+  describe('POST /input-files/:inputFileId/upload-url', () => {
+    async function createRegisteredFile() {
+      const response = await registerFile(caseId, sampleId);
+
+      expect(response.status).toBe(201);
+
+      return response.body.id as string;
+    }
+
+    async function requestUploadUrl(inputFileId: string, body = {}) {
+      return request(app.getHttpServer())
+        .post(`${API_PREFIX}/input-files/${inputFileId}/upload-url`)
+        .send(body);
+    }
+
+    it('generates a presigned upload URL and creates an upload session', async () => {
+      const inputFileId = await createRegisteredFile();
+
+      const fileBeforeUpload = await prisma.inputFile.findUniqueOrThrow({
+        where: { id: inputFileId },
+      });
+
+      const response = await requestUploadUrl(inputFileId, {
+        contentType: 'application/octet-stream',
+      });
+
+      expect(response.status).toBe(201);
+
+      expect(response.body).toMatchObject({
+        uploadUrl: 'https://example.test/presigned-upload',
+        method: 'PUT',
+        requiredHeaders: {
+          'Content-Type': 'application/octet-stream',
+        },
+      });
+
+      expect(response.body.uploadSessionId).toBeDefined();
+      expect(response.body.expiresAt).toBeDefined();
+
+      const expiresAt = new Date(response.body.expiresAt).getTime();
+
+      expect(expiresAt).toBeGreaterThan(Date.now());
+      expect(expiresAt).toBeLessThanOrEqual(Date.now() + 610_000);
+
+      // Confirm the storage adapter received the backend-generated key.
+      expect(objectStorageMock.createPresignedUploadUrl).toHaveBeenCalledOnce();
+
+      expect(objectStorageMock.createPresignedUploadUrl).toHaveBeenCalledWith({
+        key: fileBeforeUpload.storageKey,
+        expiresInSeconds: 600,
+        contentType: 'application/octet-stream',
+      });
+
+      // InputFile should now be UPLOADING.
+      const updatedFile = await prisma.inputFile.findUniqueOrThrow({
+        where: { id: inputFileId },
+      });
+
+      expect(updatedFile.status).toBe('UPLOADING');
+
+      // An INITIATED UploadSession should exist.
+      const session = await prisma.uploadSession.findUniqueOrThrow({
+        where: {
+          id: response.body.uploadSessionId,
+        },
+      });
+
+      expect(session).toMatchObject({
+        organizationId: TEST_ORG_ID,
+        inputFileId,
+        status: 'INITIATED',
+      });
+
+      expect(session.expiresAt).toEqual(new Date(response.body.expiresAt));
+
+      // The storage key must not leak through the response.
+      expect(response.body).not.toHaveProperty('storageKey');
+    });
+
+    it('allows the default content type when no content type is provided', async () => {
+      const inputFileId = await createRegisteredFile();
+
+      const response = await requestUploadUrl(inputFileId);
+
+      expect(response.status).toBe(201);
+
+      expect(response.body.requiredHeaders).toEqual({
+        'Content-Type': 'application/gzip',
+      });
+
+      expect(objectStorageMock.createPresignedUploadUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentType: 'application/gzip',
+        }),
+      );
+    });
+
+    it('returns 409 when a second upload URL is requested for an uploading file', async () => {
+      const inputFileId = await createRegisteredFile();
+
+      const firstResponse = await requestUploadUrl(inputFileId, {
+        contentType: 'application/octet-stream',
+      });
+
+      expect(firstResponse.status).toBe(201);
+
+      const secondResponse = await requestUploadUrl(inputFileId, {
+        contentType: 'application/octet-stream',
+      });
+
+      expect(secondResponse.status).toBe(409);
+
+      // Only one session and one signing operation should exist.
+      const sessions = await prisma.uploadSession.findMany({
+        where: {
+          inputFileId,
+          organizationId: TEST_ORG_ID,
+        },
+      });
+
+      expect(sessions).toHaveLength(1);
+
+      expect(objectStorageMock.createPresignedUploadUrl).toHaveBeenCalledOnce();
+    });
+
+    it('returns 404 when the input file belongs to another organization', async () => {
+      const foreignCase = await createCase(OTHER_ORG_ID);
+      foreignCaseId = foreignCase.id;
+
+      const foreignSample = await createSample(
+        foreignCase.id,
+        `FOREIGN-${randomUUID()}`,
+        OTHER_ORG_ID,
+      );
+
+      foreignSampleId = foreignSample.id;
+
+      const foreignFile = await createForeignInputFile(foreignSample.id);
+
+      const response = await requestUploadUrl(foreignFile.id, {
+        contentType: 'application/octet-stream',
+      });
+
+      expect(response.status).toBe(404);
+
+      expect(objectStorageMock.createPresignedUploadUrl).not.toHaveBeenCalled();
+
+      const unchangedFile = await prisma.inputFile.findUniqueOrThrow({
+        where: { id: foreignFile.id },
+      });
+
+      expect(unchangedFile.status).toBe('REGISTERED');
+
+      const sessions = await prisma.uploadSession.findMany({
+        where: {
+          inputFileId: foreignFile.id,
+        },
+      });
+
+      expect(sessions).toHaveLength(0);
+    });
+
+    it('returns 400 for a content type not allowed for the file type', async () => {
+      const inputFileId = await createRegisteredFile();
+
+      const response = await requestUploadUrl(inputFileId, {
+        contentType: 'text/html',
+      });
+
+      expect(response.status).toBe(400);
+
+      expect(objectStorageMock.createPresignedUploadUrl).not.toHaveBeenCalled();
+
+      const file = await prisma.inputFile.findUniqueOrThrow({
+        where: { id: inputFileId },
+      });
+
+      expect(file.status).toBe('REGISTERED');
+
+      const sessions = await prisma.uploadSession.findMany({
+        where: { inputFileId },
+      });
+
+      expect(sessions).toHaveLength(0);
+    });
+
+    it.each(['UPLOADED', 'VALIDATED'] as const)(
+      'returns 409 when the file status is %s',
+      async (status) => {
+        const inputFileId = await createRegisteredFile();
+
+        await prisma.inputFile.update({
+          where: { id: inputFileId },
+          data: { status },
+        });
+
+        const response = await requestUploadUrl(inputFileId, {
+          contentType: 'application/octet-stream',
+        });
+
+        expect(response.status).toBe(409);
+
+        expect(
+          objectStorageMock.createPresignedUploadUrl,
+        ).not.toHaveBeenCalled();
+
+        const sessions = await prisma.uploadSession.findMany({
+          where: { inputFileId },
+        });
+
+        expect(sessions).toHaveLength(0);
+      },
+    );
+
+    it('returns 500 and marks the file and session as FAILED when URL signing fails', async () => {
+      const inputFileId = await createRegisteredFile();
+
+      objectStorageMock.createPresignedUploadUrl.mockRejectedValueOnce(
+        new Error('Simulated S3 signing failure'),
+      );
+
+      const response = await requestUploadUrl(inputFileId, {
+        contentType: 'application/octet-stream',
+      });
+
+      expect(response.status).toBe(500);
+
+      expect(response.body.message).toBe('Failed to generate upload URL');
+
+      const file = await prisma.inputFile.findUniqueOrThrow({
+        where: { id: inputFileId },
+      });
+
+      expect(file.status).toBe('FAILED');
+      expect(file.failureReason).toBe('Failed to generate upload URL');
+
+      const session = await prisma.uploadSession.findFirstOrThrow({
+        where: {
+          inputFileId,
+          organizationId: TEST_ORG_ID,
+        },
+      });
+
+      expect(session.status).toBe('FAILED');
+    });
+
+    it('returns 404 for an unknown input file ID', async () => {
+      const response = await requestUploadUrl(randomUUID(), {
+        contentType: 'application/octet-stream',
+      });
+
+      expect(response.status).toBe(404);
+
+      expect(objectStorageMock.createPresignedUploadUrl).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Authorization', () => {
+    it('rejects generating an upload URL without organization membership', async () => {
+      const created = await registerFile(caseId, sampleId);
+      expect(created.status).toBe(201);
+
+      await prisma.membership.delete({
+        where: {
+          organizationId_userId: {
+            organizationId: TEST_ORG_ID,
+            userId: TEST_USER_ID,
+          },
+        },
+      });
+
+      try {
+        const response = await request(app.getHttpServer())
+          .post(`${API_PREFIX}/input-files/${created.body.id}/upload-url`)
+          .send({
+            contentType: 'application/octet-stream',
+          });
+
+        expect(response.status).toBe(403);
+
+        expect(
+          objectStorageMock.createPresignedUploadUrl,
+        ).not.toHaveBeenCalled();
+
+        const file = await prisma.inputFile.findUniqueOrThrow({
+          where: { id: created.body.id },
+        });
+
+        expect(file.status).toBe('REGISTERED');
+
+        const sessions = await prisma.uploadSession.findMany({
+          where: {
+            inputFileId: created.body.id,
+          },
+        });
+
+        expect(sessions).toHaveLength(0);
+      } finally {
+        await ensureTestMembership();
+      }
+    });
     it('rejects listing, retrieving and registering files without membership', async () => {
       const created = await registerFile(caseId, sampleId);
       expect(created.status).toBe(201);

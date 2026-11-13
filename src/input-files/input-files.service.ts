@@ -182,7 +182,7 @@ export class InputFilesService {
           },
           data: {
             status: InputFileStatus.FAILED,
-            failureReason: 'Unable to generate upload URL',
+            failureReason: 'Failed to generate upload URL',
           },
         }),
       ]);
